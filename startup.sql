@@ -79,6 +79,28 @@ exec ctx_output.start_log('my_log');
 exec ctx_cls.clustering('"TEXTDEV"."DOCUMENTO_IDX"','id','PESO','TEMA','TEMAS_DOCUMENTOS');
 exec ctx_output.end_log;
    
-   
+--View search
+CREATE VIEW v_filtro_biblioteca AS
+  SELECT 
+    id AS "doc id", 
+    titulo,
+    tipo_archivo AS "Tipo Archivo",
+    tipo_documento AS "Tipo Documento",
+    autores AS "Autor(es)",
+    nombre_archivo AS Archivo,
+    CONCAT(ROUND(sys.dbms_lob.getlength(documento)/1024, 2),'MB') AS "Tamaño",
+    fecha_creacion AS "Creado el", 
+    1 AS Descargar,
+    2 AS Markup,
+    3 AS Temas,
+    documento
+FROM Biblioteca;
+
+--Search query
+SELECT "doc id", titulo, "Tipo Archivo", "Tipo Documento", "Autor(es)", Archivo, "Tamaño", "Creado el", Descargar, Markup, Temas
+FROM v_filtro_biblioteca
+WHERE ( :P4_CLASS IS NULL OR :P4_CLASS = "Tipo Documento" ) 
+AND ( :P4_DOCUMENT_TYPE IS NULL OR :P4_DOCUMENT_TYPE = "Tipo Archivo" )
+AND ( :P4_TEXT_FILTER IS NULL OR ( CONTAINS(documento, :P4_TEXT_FILTER, 1) > 0 AND :P4_SCORE < SCORE(1) ) );
    
 
