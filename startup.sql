@@ -93,14 +93,16 @@ CREATE VIEW v_filtro_biblioteca AS
     1 AS Descargar,
     2 AS Markup,
     3 AS Temas,
+    estado,
     documento
 FROM Biblioteca;
 
 --Search query
-SELECT "doc id", titulo, "Tipo Archivo", "Tipo Documento", "Autor(es)", Archivo, "Tamaño", "Creado el", Descargar, Markup, Temas
+SELECT SCORE(1), "doc id", titulo, "Tipo Archivo", "Tipo Documento", "Autor(es)", Archivo, "Tamaño", "Creado el", Descargar, Markup, Temas
 FROM v_filtro_biblioteca
 WHERE ( :P4_CLASS IS NULL OR :P4_CLASS = "Tipo Documento" ) 
 AND ( :P4_DOCUMENT_TYPE IS NULL OR :P4_DOCUMENT_TYPE = "Tipo Archivo" )
-AND ( :P4_TEXT_FILTER IS NULL OR ( CONTAINS(documento, :P4_TEXT_FILTER, 1) > 0 AND :P4_SCORE < SCORE(1) ) );
+AND ( :P4_TEXT_FILTER IS NULL OR ( CONTAINS(documento, :P4_TEXT_FILTER, 1) > 0 AND :P4_SCORE < SCORE(1) ) )
+AND estado = 'Disponible';
    
 
