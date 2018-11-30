@@ -170,4 +170,46 @@ BEGIN
     
 END;
 
+CREATE TABLE MARKUP (
+  query_id 	NUMBER,
+  document 	BLOB
+);
+
+set define off;
+CREATE OR REPLACE PROCEDURE UPDATE_MARKUP (ID NUMBER, QUERY VARCHAR) IS
+    HTML_CLOB               CLOB;
+    CONVERTED_BLOB          BLOB;
+    o1                      integer;
+    o2                      integer;
+    c                       integer;
+    w                       integer;
+BEGIN
+    -- Generate the markup
+    ctx_doc.markup (index_name  => 'docs_index',
+    textkey                     => TO_CHAR(ID),
+    text_query                  => QUERY,
+    restab                      => HTML_CLOB,
+    starttag                    => '<A NAME=ctx%CURNUM><i><font color=red><B>',
+    endtag                      => '</B></font></i></A>',
+    prevtag                     => '<A HREF=#ctx%PREVNUM>&lt;</A>',
+    nexttag                     => '<A HREF=#ctx%NEXTNUM>&gt;</A>');
+
+    -- Initialize variables to convert the clob to blob
+    o1 := 1;
+    o2 := 1;
+    c := 0;
+    w := 0;
+    DBMS_LOB.CreateTemporary(CONVERTED_BLOB, true);
+  
+    -- Convert
+    DBMS_LOB.ConvertToBlob(CONVERTED_BLOB, HTML_CLOB, length(HTML_CLOB), o1, o2, 0, c, w);
+
+    -- Insert in the markup table
+    INSERT INTO MARKUP(query_id, document) VALUES(ID, CONVERTED_BLOB);
+end;
+
+
+
+
+
       
