@@ -150,6 +150,24 @@ EXEC ctx_doc.markup (index_name => 'docs_index',                        -
                      nexttag    => '<A HREF=#ctx%NEXTNUM>&gt;</A>');
 
 
+CREATE PROCEDURE UPDATE_THEMES( ID Number ) AS
+BEGIN
+    
+    DELETE FROM THEME
+    WHERE query_id = ID;
+    
+    ctx_doc.themes( index_name => 'docs_index', restab => 'THEME', textkey => ID, query_id => ID, full_themes => FALSE );
+    
+END;
 
+CREATE PROCEDURE UPDATE_GIST( ID Number, THEME varchar ) AS
+BEGIN
+    
+    DELETE FROM GIST
+    WHERE query_id = ID;
+    
+    ctx_doc.gist ( index_name => 'docs_index', textkey => ID, query_id => ID, restab => 'gists_table', pov => THEME );
+    
+END;
 
       
