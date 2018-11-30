@@ -1,5 +1,5 @@
 -- Table that will hold the documents in the app.
-drop view v_biblioteca
+DROP TABLE BIBLIOTECA;
 CREATE TABLE BIBLIOTECA(
     id                  number           PRIMARY KEY, 
     titulo              varchar(500)     NOT NULL,
@@ -19,18 +19,12 @@ CREATE TABLE BIBLIOTECA(
     autores             varchar(300),
     fecha_carga         date,
     usuario             varchar(30),
-    documento           blob    NOT NULL
+    documento           blob   
 );
 
-CREATE TABLE STATES(
-    state_name          varchar(100)       PRIMARY KEY
-)
-select * from biblioteca;
-INSERT INTO STATES VALUES ('Disponible');
-INSERT INTO STATES VALUES ('Archivado');
-INSERT INTO STATES VALUES ('Inactivo');
 -- View for the interactive report that creates the documents.
-CREATE VIEW v_biblioteca AS
+DROP VIEW V_BIBLIOTECA;
+CREATE VIEW V_BIBLIOTECA AS
   SELECT 
     id, 
     titulo,
@@ -47,62 +41,115 @@ CREATE VIEW v_biblioteca AS
     charset_archivo, 
     fecha_carga, 
     fecha_actualizacion,
-    CONCAT(ROUND(sys.dbms_lob.getlength(documento)/1024, 2),'MB') AS tamano,
+    CONCAT(ROUND(sys.dbms_lob.getlength(documento)/1024, 2),'MB') AS tamaño,
     1 AS descargar
     FROM Biblioteca;
-
--- Tables to hold document cluster clasifications.
-create table PESO (       
-       DOC_ID NUMBER,
-       TEMA_ID NUMBER,
-       PESO_SIMILITUD NUMBER);
-create table TEMA (
-       ID NUMBER,
-       DESCRIPCION varchar2(4000),
-       NOMBRE varchar2(200),
-       TAMANO   number,
-       PESO_CALIDAD number,
-       parent number);
-
--- Stored procedure to generate the index
-DROP INDEX "TEXTDEV"."DOCUMENTO_IDX";
-CREATE INDEX "TEXTDEV"."DOCUMENTO_IDX" ON "TEXTDEV"."BIBLIOTECA" ("DOCUMENTO") 
-   INDEXTYPE IS "CTXSYS"."CONTEXT"  PARAMETERS ('lexer MYLEXER stoplist CTXSYS.EMPTY_STOPLIST DATASTORE CTXSYS.DEFAULT_DATASTORE');
-   
--- Calculate clusters
--- Place these in a stored procedure in the future
-exec ctx_ddl.drop_preference('TEMAS_DOCUMENTOS');
-exec ctx_ddl.create_preference('TEMAS_DOCUMENTOS','KMEAN_CLUSTERING');
-exec ctx_ddl.set_attribute('TEMAS_DOCUMENTOS','CLUSTER_NUM','3');
-   
-exec ctx_output.start_log('my_log');
-exec ctx_cls.clustering('"TEXTDEV"."DOCUMENTO_IDX"','id','PESO','TEMA','TEMAS_DOCUMENTOS');
-exec ctx_output.end_log;
-   
+    
 --View search
-CREATE VIEW v_filtro_biblioteca AS
-  SELECT 
-    id AS "doc id", 
-    titulo,
-    tipo_archivo AS "Tipo Archivo",
-    tipo_documento AS "Tipo Documento",
-    autores AS "Autor(es)",
-    nombre_archivo AS Archivo,
-    CONCAT(ROUND(sys.dbms_lob.getlength(documento)/1024, 2),'MB') AS "Tamaño",
-    fecha_creacion AS "Creado el", 
-    1 AS Descargar,
-    2 AS Markup,
-    3 AS Temas,
-    estado,
-    documento
-FROM Biblioteca;
+DROP VIEW V_FILTRO_BIBLIOTECA;
+CREATE VIEW V_FILTRO_BIBLIOTECA AS
+    SELECT 
+        id,
+        titulo,
+        tipo_archivo,
+        tipo_documento,
+        autores,
+        nombre_archivo,
+        CONCAT(ROUND(sys.dbms_lob.getlength(documento)/1024, 2),'MB') AS tamaño,
+        fecha_creacion,
+        estado,
+        1 AS descargar,
+        2 AS markup,
+        3 AS temas,
+        documento
+    FROM Biblioteca
+    WHERE
+        estado = 'Disponible'    
+;
 
 --Search query
-SELECT SCORE(1), "doc id", titulo, "Tipo Archivo", "Tipo Documento", "Autor(es)", Archivo, "Tamaño", "Creado el", Descargar, Markup, Temas
-FROM v_filtro_biblioteca
-WHERE ( :P4_CLASS IS NULL OR :P4_CLASS = "Tipo Documento" ) 
-AND ( :P4_DOCUMENT_TYPE IS NULL OR :P4_DOCUMENT_TYPE = "Tipo Archivo" )
-AND ( :P4_TEXT_FILTER IS NULL OR ( CONTAINS(documento, :P4_TEXT_FILTER, 1) > 0 AND :P4_SCORE < SCORE(1) ) )
-AND estado = 'Disponible';
-   
+SELECT
+    SCORE(1), 
+    id, 
+	titulo, 
+    tipo_archivo, 
+    tipo_documento, 
+    autores, 
+    nombre_archivo, 
+    tamaño, 
+    fecha_creacion,
+	estado,
+    descargar, 
+    markup, 
+    temas
+FROM v_filtro_biblioteca v
+WHERE 
+    ( :P6_CLASE = 'Todos' OR :P6_CLASE = tipo_documento ) 
+    AND ( :P6_TIPO_ARCHIVO = 'Todos' OR :P6_TIPO_ARCHIVO = tipo_archivo )
+    AND ( :P6_EXPRESION IS NOT NULL AND ( CONTAINS(v.documento, CONCAT(CONCAT('about(',:P6_EXPRESION),')'), 1) > :P6_SCORE ) )
 
+-- Contains all the themes in the collection.
+DROP TABLE THEME;
+CREATE TABLE THEME(
+    query_id            number, 
+    theme               varchar2(2000)     NOT NULL,
+    weight              number
+);
+
+-- Contains gists for each document.
+DROP TABLE GIST;
+CREATE TABLE GIST (
+    query_id            number,
+    pov                 varchar2(80),
+    gist                clob 
+);
+
+-- Markup
+CREATE TABLE MARKUP (
+  query_id 	NUMBER,
+  document 	CLOB
+);
+
+
+-- Stored procedure to generate the index
+DROP INDEX docs_index;
+exec ctx_ddl.create_preference('english_lexer','basic_lexer');
+exec ctx_ddl.set_attribute('english_lexer','index_themes','yes');
+exec ctx_ddl.set_attribute('english_lexer','theme_language','english');
+CREATE INDEX docs_index ON "TEXTDEV"."BIBLIOTECA" ("DOCUMENTO") 
+   INDEXTYPE IS "CTXSYS"."CONTEXT"  PARAMETERS ('lexer english_lexer');
+
+-- Stored procedures to re-clasify documents, generating themes and gists for each document.
+-- Themes
+DROP TABLE THEME;
+EXEC ctx_doc.themes(            -
+    index_name => 'docs_index', -
+    restab => 'THEME',          -
+    textkey => 121,             -
+    full_themes => FALSE        -
+);
+
+-- Gists
+DROP TABLE GIST;
+EXEC ctx_doc.gist (             -
+    index_name => 'docs_index', -
+    textkey => '121',           -
+    restab => 'gists_table'     -
+);
+
+set define off;
+TRUNCATE TABLE MARKUP;
+EXEC ctx_doc.markup (index_name => 'docs_index',                        -
+                     textkey    => TO_CHAR(1),                          -
+                     text_query => 'sapience',                          -
+                     query_id   => 0,                                   -
+                     restab     => 'MARKUP',                            -
+                     starttag   => '<A NAME=ctx%CURNUM><i><font color=red><B>',            -
+                     endtag     => '</B></font></i></A>',                   -
+                     prevtag    => '<A HREF=#ctx%PREVNUM>&lt;</A>',   -
+                     nexttag    => '<A HREF=#ctx%NEXTNUM>&gt;</A>');
+
+
+
+
+      
