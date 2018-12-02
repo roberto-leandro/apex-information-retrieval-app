@@ -131,6 +131,7 @@ EXEC ctx_doc.gist (             -
     restab => 'gists_table'     
 );
 
+
 CREATE PROCEDURE UPDATE_THEMES( ID Number ) AS
 BEGIN
     
@@ -190,10 +191,6 @@ BEGIN
     p_last_updated_on => sysdate,
     p_etag => '');
 END;
-
-
-
-
 
 
 
