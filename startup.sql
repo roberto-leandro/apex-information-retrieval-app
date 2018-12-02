@@ -67,7 +67,8 @@ CREATE VIEW V_FILTRO_BIBLIOTECA AS
         estado = 'Disponible'    
 ;
 
---Search query
+--Search query used in the APEX application
+/*
 SELECT
     SCORE(1), 
     id, 
@@ -87,6 +88,7 @@ WHERE
     ( :P6_CLASE = 'Todos' OR :P6_CLASE = tipo_documento ) 
     AND ( :P6_TIPO_ARCHIVO = 'Todos' OR :P6_TIPO_ARCHIVO = tipo_archivo )
     AND ( :P6_EXPRESION IS NOT NULL AND ( CONTAINS(v.documento, CONCAT(CONCAT('about(',:P6_EXPRESION),')'), 1) > :P6_SCORE ) )
+*/
 
 -- Contains all the themes in the collection.
 DROP TABLE THEME;
@@ -104,12 +106,6 @@ CREATE TABLE GIST (
     gist                clob 
 );
 
--- Markup
-CREATE TABLE MARKUP (
-  query_id 	NUMBER,
-  document 	CLOB
-);
-
 
 -- Stored procedure to generate the index
 DROP INDEX docs_index;
@@ -121,35 +117,85 @@ CREATE INDEX docs_index ON "TEXTDEV"."BIBLIOTECA" ("DOCUMENTO")
 
 -- Stored procedures to re-clasify documents, generating themes and gists for each document.
 -- Themes
-DROP TABLE THEME;
 EXEC ctx_doc.themes(            -
     index_name => 'docs_index', -
     restab => 'THEME',          -
     textkey => 121,             -
-    full_themes => FALSE        -
+    full_themes => FALSE        
 );
 
 -- Gists
-DROP TABLE GIST;
 EXEC ctx_doc.gist (             -
     index_name => 'docs_index', -
     textkey => '121',           -
-    restab => 'gists_table'     -
+    restab => 'gists_table'     
 );
 
-set define off;
-TRUNCATE TABLE MARKUP;
-EXEC ctx_doc.markup (index_name => 'docs_index',                        -
-                     textkey    => TO_CHAR(1),                          -
-                     text_query => 'sapience',                          -
-                     query_id   => 0,                                   -
-                     restab     => 'MARKUP',                            -
-                     starttag   => '<A NAME=ctx%CURNUM><i><font color=red><B>',            -
-                     endtag     => '</B></font></i></A>',                   -
-                     prevtag    => '<A HREF=#ctx%PREVNUM>&lt;</A>',   -
-                     nexttag    => '<A HREF=#ctx%NEXTNUM>&gt;</A>');
+CREATE PROCEDURE UPDATE_THEMES( ID Number ) AS
+BEGIN
+    
+    DELETE FROM THEME
+    WHERE query_id = ID;
+    
+    ctx_doc.themes( index_name => 'docs_index', restab => 'THEME', textkey => ID, query_id => ID, full_themes => FALSE );
+    
+END;
+
+CREATE PROCEDURE UPDATE_GIST( ID Number, THEME varchar ) AS
+BEGIN
+    
+    DELETE FROM GIST
+    WHERE query_id = ID;
+    
+    ctx_doc.gist ( index_name => 'docs_index', textkey => ID, query_id => ID, restab => 'gists_table', pov => THEME );
+    
+END;
+
+
+CREATE OR REPLACE PROCEDURE GENERATE_MARKUP (ID NUMBER, QUERY VARCHAR) IS
+--DECLARE
+    HTML_CLOB               CLOB;
+    CONVERTED_BLOB          BLOB;
+    offset1                 integer;
+    offset2                 integer;
+    context                 integer;
+    warning                 integer;
+    v_id                    integer;
+BEGIN
+    -- Generate the markup
+    ctx_doc.markup (index_name  => 'docs_index',
+    textkey                     => TO_CHAR(ID ),
+    text_query                  => QUERY,
+    restab                      => HTML_CLOB,
+    starttag                    => '<A NAME=ctx%CURNUM><i><font color=red><B>',
+    endtag                      => '</B></font></i></A>',
+    prevtag                     => '<A HREF=#ctx%PREVNUM>&lt;</A>',
+    nexttag                     => '<A HREF=#ctx%NEXTNUM>&gt;</A>');
+
+    -- Initialize variables to convert the clob to blob
+    offset1 := 1;
+    offset2 := 1;
+    context := 0;
+    warning := 0;
+    DBMS_LOB.CreateTemporary(CONVERTED_BLOB, true);
+  
+    -- Convert the resulting clob into a blob to be downloaded
+    DBMS_LOB.ConvertToBlob(CONVERTED_BLOB, HTML_CLOB, length(HTML_CLOB), offset1, offset2, 0, context, warning);
+
+    -- Download the blob
+    wwv_flow_file_mgr.download_file( p_file_content => CONVERTED_BLOB,
+    p_file_name => 'file'||to_char(v_id,'fm00009')||'.html',
+    p_mime_type => 'text/html',
+    p_file_charset => 'UTF-8',
+    p_last_updated_on => sysdate,
+    p_etag => '');
+END;
 
 
 
 
-      
+
+
+
+
+
