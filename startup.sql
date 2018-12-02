@@ -193,6 +193,26 @@ BEGIN
 END;
 
 
+---------------------
+
+DECLARE
+ 	CURSOR biblioteca_id_cur
+ 	IS
+     	SELECT id
+    	FROM BIBLIOTECA;
+
+ 	l_biblioteca_id   biblioteca_id_cur%ROWTYPE;
+  BEGIN
+ 	OPEN biblioteca_id_cur;
+
+	LOOP
+    	FETCH biblioteca_id_cur INTO l_biblioteca_id;
+    	EXIT WHEN biblioteca_id_cur%NOTFOUND;
+    	UPDATE_THEMES(l_biblioteca_id);
+	END LOOP;
+
+ 	CLOSE biblioteca_id_cur;
+ END;
 
 
 
